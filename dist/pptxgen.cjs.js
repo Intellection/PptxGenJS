@@ -1,4 +1,4 @@
-/* PptxGenJS 3.2.0-beta @ 2020-03-18T02:34:15.892Z */
+/* PptxGenJS 3.2.0-beta @ 2020-05-04T12:36:16.337Z */
 'use strict';
 
 var JSZip = require('jszip');
@@ -3184,6 +3184,8 @@ function addChartDefinition(target, type, data, opt) {
     if (!options.dataLabelFormatScatter && options._type === CHART_TYPE.SCATTER)
         options.dataLabelFormatScatter = 'custom';
     //
+    if (!options.dataLabelFormatBar && options._type === CHART_TYPE.BAR)
+        options.dataLabelFormatBar = 'custom';
     options.lineSize = typeof options.lineSize === 'number' ? options.lineSize : 2;
     options.valAxisMajorUnit = typeof options.valAxisMajorUnit === 'number' ? options.valAxisMajorUnit : null;
     options.valAxisCrossesAt = options.valAxisCrossesAt || 'autoZero';
@@ -4577,6 +4579,7 @@ function makeChartType(chartType, data, opts, valAxisId, catAxisId, isMultiTypeC
                 ]
             */
             var colorIndex_1 = -1; // Maintain the color index by region
+            var colorIndexPerValue_1 = -1;
             data.forEach(function (obj) {
                 colorIndex_1++;
                 var idx = obj.index;
@@ -4680,10 +4683,14 @@ function makeChartType(chartType, data, opts, valAxisId, catAxisId, isMultiTypeC
                 }
                 // Color chart bars various colors
                 // Allow users with a single data set to pass their own array of colors (check for this using != ours)
-                if ((chartType === CHART_TYPE.BAR || chartType === CHART_TYPE.BAR3D) && (data.length === 1 || opts.valueBarColors) && opts.chartColors !== BARCHART_COLORS) {
+                if ((chartType === CHART_TYPE.BAR || chartType === CHART_TYPE.BAR3D) && (data.length === 1 || opts.valueBarColors)) {
                     // Series Data Point colors
                     obj.values.forEach(function (value, index) {
                         var arrColors = value < 0 ? opts.invertedColors || opts.chartColors || BARCHART_COLORS : opts.chartColors || [];
+                        var colorIndex = index % arrColors.length;
+                        if (opts.valueBarColors && data.length > 1 && opts.chartColors && opts.chartColors.length > obj.values.length) {
+                            colorIndex = ++colorIndexPerValue_1;
+                        }
                         strXml += '  <c:dPt>';
                         strXml += '    <c:idx val="' + index + '"/>';
                         strXml += '      <c:invertIfNegative val="0"/>';
@@ -4694,13 +4701,13 @@ function makeChartType(chartType, data, opts, valAxisId, catAxisId, isMultiTypeC
                         }
                         else if (chartType === CHART_TYPE.BAR) {
                             strXml += '<a:solidFill>';
-                            strXml += '  <a:srgbClr val="' + arrColors[index % arrColors.length] + '"/>';
+                            strXml += '  <a:srgbClr val="' + arrColors[colorIndex] + '"/>';
                             strXml += '</a:solidFill>';
                         }
                         else {
                             strXml += '<a:ln>';
                             strXml += '  <a:solidFill>';
-                            strXml += '   <a:srgbClr val="' + arrColors[index % arrColors.length] + '"/>';
+                            strXml += '   <a:srgbClr val="' + arrColors[colorIndex] + '"/>';
                             strXml += '  </a:solidFill>';
                             strXml += '</a:ln>';
                         }
@@ -4756,6 +4763,71 @@ function makeChartType(chartType, data, opts, valAxisId, catAxisId, isMultiTypeC
                 // Option: `smooth`
                 if (chartType === CHART_TYPE.LINE)
                     strXml += '<c:smooth val="' + (opts.lineSmooth ? '1' : '0') + '"/>';
+                {
+                    var chartUuid_1 = getUuid('-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
+                    if (obj.valueLabels && opts.dataLabelFormatBar == 'custom') {
+                        strXml += '<c:dLbls>';
+                        obj.values.forEach(function (value, index) {
+                            var dataValueLabelIndex = data.length === 1 ? index : colorIndex_1;
+                            if (opts.dataLabelFormatBar == 'custom') {
+                                strXml += '<c:dLbl>';
+                                strXml += '    <c:numFmt formatCode="' + opts.dataLabelFormatCode + '" sourceLinked="0"/>';
+                                strXml += '    <c:idx val="' + index + '"/>';
+                                strXml += '    <c:tx>';
+                                strXml += '      <c:rich>';
+                                strXml += '				<a:bodyPr>';
+                                strXml += '					<a:spAutoFit/>';
+                                strXml += '				</a:bodyPr>';
+                                strXml += '      	<a:lstStyle/>';
+                                strXml += '      	<a:p>';
+                                strXml += '					<a:pPr>';
+                                strXml += '					<a:defRPr/>';
+                                strXml += '					</a:pPr>';
+                                strXml += '      		<a:fld id="{' + getUuid('xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx') + '}" type="YVALUE">';
+                                strXml += '      			<a:rPr lang="' + (opts.lang || 'en-US') + '" baseline="0"/>';
+                                strXml += '          	<a:pPr>';
+                                strXml += '          		<a:defRPr/>';
+                                strXml += '          	</a:pPr>';
+                                strXml += '          	<a:t>[' + encodeXmlEntities(obj.name) + ']</a:t>';
+                                strXml += '        	</a:fld>';
+                                strXml += '        	<a:r>';
+                                strXml += '        		<a:rPr lang="' + (opts.lang || 'en-US') + '" dirty="0"/>';
+                                strXml += '          	<a:t>' + ' ' + encodeXmlEntities(obj.valueLabels[index]) + '</a:t>';
+                                strXml += '        	</a:r>';
+                                strXml += '        	<a:endParaRPr lang="' + (opts.lang || 'en-US') + '" dirty="0"/>';
+                                strXml += '      	</a:p>';
+                                strXml += '      </c:rich>';
+                                strXml += '    </c:tx>';
+                                strXml += '    <c:spPr>';
+                                strXml += '    	<a:noFill/>';
+                                strXml += '    	<a:ln>';
+                                strXml += '    		<a:noFill/>';
+                                strXml += '    	</a:ln>';
+                                strXml += '    	<a:effectLst/>';
+                                strXml += '    </c:spPr>';
+                                if (opts.dataLabelPosition)
+                                    strXml += ' <c:dLblPos val="' + opts.dataLabelPosition + '"/>';
+                                strXml += '    <c:showLegendKey val="0"/>';
+                                strXml += '    <c:showCatName val="0"/>';
+                                strXml += '    <c:showSerName val="0"/>';
+                                strXml += '    <c:showPercent val="0"/>';
+                                strXml += '    <c:showBubbleSize val="0"/>';
+                                strXml += "    <c:showLeaderLines val=\"" + (opts.showLeaderLines ? '1' : '0') + "\"/>";
+                                strXml += '    <c:extLst>';
+                                strXml += '      <c:ext uri="{CE6537A1-D6FC-4f65-9D91-7224C49458BB}" xmlns:c15="http://schemas.microsoft.com/office/drawing/2012/chart">';
+                                strXml += '				<c15:dlblFieldTable/>';
+                                strXml += '				<c15:showDataLabelsRange val="0"/>';
+                                strXml += '		  </c:ext>';
+                                strXml += '      <c:ext uri="{C3380CC4-5D6E-409C-BE32-E72D297353CC}" xmlns:c16="http://schemas.microsoft.com/office/drawing/2014/chart">';
+                                strXml += '				<c16:uniqueId val="{' + "00000000".substring(0, 8 - (index + 1).toString().length).toString() + (index + 1) + chartUuid_1 + '}"/>';
+                                strXml += '    	</c:ext>';
+                                strXml += '		</c:extLst>';
+                                strXml += '</c:dLbl>';
+                            }
+                        });
+                        strXml += '</c:dLbls>';
+                    }
+                }
                 // 4: Close "SERIES"
                 strXml += '</c:ser>';
             });
@@ -4883,7 +4955,7 @@ function makeChartType(chartType, data, opts, valAxisId, catAxisId, isMultiTypeC
                 }
                 // Option: scatter data point labels
                 if (opts.showLabel) {
-                    var chartUuid_1 = getUuid('-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
+                    var chartUuid_2 = getUuid('-xxxx-xxxx-xxxx-xxxxxxxxxxxx');
                     if (obj.labels && (opts.dataLabelFormatScatter === 'custom' || opts.dataLabelFormatScatter === 'customXY')) {
                         strXml += '<c:dLbls>';
                         obj.labels.forEach(function (label, idx) {
@@ -4958,7 +5030,7 @@ function makeChartType(chartType, data, opts, valAxisId, catAxisId, isMultiTypeC
                                 strXml += '    <c:extLst>';
                                 strXml += '      <c:ext uri="{CE6537A1-D6FC-4f65-9D91-7224C49458BB}" xmlns:c15="http://schemas.microsoft.com/office/drawing/2012/chart"/>';
                                 strXml += '      <c:ext uri="{C3380CC4-5D6E-409C-BE32-E72D297353CC}" xmlns:c16="http://schemas.microsoft.com/office/drawing/2014/chart">';
-                                strXml += '			<c16:uniqueId val="{' + '00000000'.substring(0, 8 - (idx + 1).toString().length).toString() + (idx + 1) + chartUuid_1 + '}"/>';
+                                strXml += '			<c16:uniqueId val="{' + '00000000'.substring(0, 8 - (idx + 1).toString().length).toString() + (idx + 1) + chartUuid_2 + '}"/>';
                                 strXml += '      </c:ext>';
                                 strXml += '		</c:extLst>';
                                 strXml += '</c:dLbl>';
