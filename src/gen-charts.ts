@@ -193,20 +193,13 @@ export function createExcelWorksheet(chartObject: ISlideRelChart, zip: JSZip): P
 				*/
 			} else if (chartObject.opts._type === CHART_TYPE.SCATTER) {
 				strTableXml +=
-					'<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Table1" displayName="Table1" ref="A1:' +
-					LETTERS[data.length - 1] +
-					(data[0].values.length + 1) +
-					'" totalsRowShown="0">'
+        strTableXml += `<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Table1" displayName="Table1" ref="A1:${getExcelColName(data.length)}${data[0].values.length + 1}" totalsRowShown="0">`
 				strTableXml += '<tableColumns count="' + data.length + '">'
 				data.forEach((_obj, idx) => {
 					strTableXml += '<tableColumn id="' + (idx + 1) + '" name="' + (idx === 0 ? 'X-Values' : 'Y-Value ' + idx) + '" />'
 				})
 			} else {
-				strTableXml +=
-					'<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Table1" displayName="Table1" ref="A1:' +
-					LETTERS[data.length] +
-					(data[0].labels.length + 1) +
-					'" totalsRowShown="0">'
+        strTableXml += `<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Table1" displayName="Table1" ref="A1:${getExcelColName(data.length + data[0].labels.length)}${data[0].labels[0].length + 1}'" totalsRowShown="0">`
 				strTableXml += '<tableColumns count="' + (data.length + 1) + '">'
 				strTableXml += '<tableColumn id="1" name=" " />'
 				data.forEach((obj, idx) => {
@@ -225,11 +218,11 @@ export function createExcelWorksheet(chartObject: ISlideRelChart, zip: JSZip): P
 			strSheetXml +=
 				'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x14ac" xmlns:x14ac="http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac">'
 			if (chartObject.opts._type === CHART_TYPE.BUBBLE) {
-				strSheetXml += '<dimension ref="A1:' + LETTERS[intBubbleCols - 1] + (data[0].values.length + 1) + '" />'
+        strSheetXml += `<dimension ref="A1:${getExcelColName(intBubbleCols)}${data[0].values.length + 1}"/>`
 			} else if (chartObject.opts._type === CHART_TYPE.SCATTER) {
-				strSheetXml += '<dimension ref="A1:' + LETTERS[data.length - 1] + (data[0].values.length + 1) + '" />'
+				strSheetXml += `<dimension ref="A1:${getExcelColName(data.length)}${data[0].values.length + 1}"/>`
 			} else {
-				strSheetXml += '<dimension ref="A1:' + LETTERS[data.length] + (data[0].labels.length + 1) + '" />'
+				strSheetXml += `<dimension ref="A1:${getExcelColName(data.length + 1)}${data[0].values.length + 1}"/>`
 			}
 
 			strSheetXml += '<sheetViews><sheetView tabSelected="1" workbookViewId="0"><selection activeCell="B1" sqref="B1" /></sheetView></sheetViews>'
@@ -257,9 +250,7 @@ export function createExcelWorksheet(chartObject: ISlideRelChart, zip: JSZip): P
 				strSheetXml += '<row r="1" spans="1:' + intBubbleCols + '">'
 				strSheetXml += '<c r="A1" t="s"><v>0</v></c>'
 				for (let idxBc = 1; idxBc < intBubbleCols; idxBc++) {
-					strSheetXml += '<c r="' + (idxBc < 26 ? LETTERS[idxBc] : 'A' + LETTERS[idxBc % LETTERS.length]) + '1" t="s">' // NOTE: use `t="s"` for label cols!
-					strSheetXml += '<v>' + idxBc + '</v>'
-					strSheetXml += '</c>'
+          strSheetXml += `<c r="${getExcelColName(idxBc + 1)}1" t="s"><v>${idxBc}</v></c>` // NOTE: add `t="s"` for label cols!
 				}
 				strSheetXml += '</row>'
 
@@ -998,7 +989,7 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 				strXml += '  <c:order val="' + idx + '"/>'
 				strXml += '  <c:tx>'
 				strXml += '    <c:strRef>'
-				strXml += '      <c:f>Sheet1!$' + LETTERS[idx + 1] + '$1</c:f>'
+        strXml += `<c:f>Sheet1!$${getExcelColName(idxColLtr + 1)}$2:$${getExcelColName(idxColLtr + 1)}$${data[0].values.length + 1}</c:f>`
 				strXml += '      <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>' + obj.name + '</c:v></c:pt></c:strCache>'
 				strXml += '    </c:strRef>'
 				strXml += '  </c:tx>'
@@ -1297,7 +1288,7 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 				// A: `<c:tx>`
 				strXml += '  <c:tx>'
 				strXml += '    <c:strRef>'
-				strXml += '      <c:f>Sheet1!$' + LETTERS[idxColLtr] + '$1</c:f>'
+				strXml += '      <c:f>Sheet1!$' + getExcelColName(idxColLtr + 1) + '$1</c:f>'
 				strXml += '      <c:strCache><c:ptCount val="1"/><c:pt idx="0"><c:v>' + obj.name + '</c:v></c:pt></c:strCache>'
 				strXml += '    </c:strRef>'
 				strXml += '  </c:tx>'
@@ -1885,17 +1876,20 @@ function genXmlTitle(opts: IChartTitleOpts): string {
  * @param {number} length - col length
  * @return {string} column name (ex: 'A2')
  */
-function getExcelColName(length: number): string {
-	let strName = ''
+function getExcelColName (colIndex: number): string {
+  console.log("getExcelColName", colIndex);
+	let colStr = ''
+	const colIdx = colIndex - 1 // Subtract 1 so `LETTERS[columnIndex]` returns "A" etc
 
-	if (length <= 26) {
-		strName = LETTERS[length]
+	if (colIdx <= 25) {
+		// A-Z
+		colStr = LETTERS[colIdx]
 	} else {
-		strName += LETTERS[Math.floor(length / LETTERS.length) - 1]
-		strName += LETTERS[length % LETTERS.length]
+		// AA-ZZ (ZZ = index 702)
+		colStr = `${LETTERS[Math.floor(colIdx / LETTERS.length - 1)]}${LETTERS[colIdx % LETTERS.length]}`
 	}
 
-	return strName
+	return colStr
 }
 
 /**
