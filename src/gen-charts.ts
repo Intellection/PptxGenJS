@@ -17,10 +17,9 @@ import {
 	DEF_FONT_TITLE_SIZE,
 	DEF_SHAPE_SHADOW,
 	LETTERS,
-	ONEPT,
 } from './core-enums'
-import { IChartOptsLib, ISlideRelChart, IShadowOptions, OptsChartData, IChartTitleOpts, OptsChartGridLine } from './core-interfaces'
-import { createColorElement, genXmlColorSelection, convertRotationDegrees, encodeXmlEntities, getMix, getUuid } from './gen-utils'
+import { IChartOptsLib, ISlideRelChart, ShadowProps, OptsChartData, IChartTitleOpts, OptsChartGridLine } from './core-interfaces'
+import { createColorElement, genXmlColorSelection, convertRotationDegrees, encodeXmlEntities, getMix, getUuid, valToPts } from './gen-utils'
 import * as JSZip from 'jszip'
 
 /**
@@ -396,7 +395,7 @@ export function createExcelWorksheet(chartObject: ISlideRelChart, zip: JSZip): P
 				// 1: Create the embedded Excel worksheet with labels and data
 				zip.file('ppt/embeddings/Microsoft_Excel_Worksheet' + chartObject.globalId + '.xlsx', content, { base64: true })
 
-				// 2: Create the chart.xml and rels files
+				// 2: Create the chart.xml and rel files
 				zip.file(
 					'ppt/charts/_rels/' + chartObject.fileName + '.rels',
 					'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -451,7 +450,9 @@ export function makeXmlCharts(rel: ISlideRelChart): string {
 			// NOTE: Add autoTitleDeleted tag in else to prevent default creation of chart title even when showTitle is set to false
 			strXml += '<c:autoTitleDeleted val="1"/>'
 		}
-		// Add 3D view tag
+		/** Add 3D view tag
+		 * @see: https://c-rex.net/projects/samples/ooxml/e1/Part4/OOXML_P4_DOCX_perspective_topic_ID0E6BUQB.html
+		 */
 		if (rel.opts._type === CHART_TYPE.BAR3D) {
 			strXml += '<c:view3D>'
 			strXml += ' <c:rotX val="' + rel.opts.v3DRotX + '"/>'
@@ -568,7 +569,9 @@ export function makeXmlCharts(rel: ISlideRelChart): string {
 		strXml += rel.opts.fill ? genXmlColorSelection(rel.opts.fill) : '<a:noFill/>'
 
 		// OPTION: Border
-		strXml += rel.opts.border ? `<a:ln w="${rel.opts.border.pt * ONEPT}" cap="flat">${genXmlColorSelection(rel.opts.border.color)}</a:ln>` : '<a:ln><a:noFill/></a:ln>'
+		strXml += rel.opts.border
+			? `<a:ln w="${valToPts(rel.opts.border.pt)}" cap="flat">${genXmlColorSelection(rel.opts.border.color)}</a:ln>`
+			: '<a:ln><a:noFill/></a:ln>'
 
 		// Close shapeProp/plotArea before Legend
 		strXml += '    <a:effectLst/>'
@@ -626,14 +629,14 @@ export function makeXmlCharts(rel: ISlideRelChart): string {
 
 /**
  * Create XML string for any given chart type
- * @example: <c:bubbleChart> or <c:lineChart>
- *
  * @param {CHART_NAME} `chartType` chart type name
  * @param {OptsChartData[]} `data` chart data
  * @param {IChartOptsLib} `opts` chart options
  * @param {string} `valAxisId`
  * @param {string} `catAxisId`
  * @param {boolean} `isMultiTypeChart`
+ * @example '<c:bubbleChart>'
+ * @example '<c:lineChart>'
  * @return {string} XML
  */
 function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChartOptsLib, valAxisId: string, catAxisId: string, isMultiTypeChart: boolean): string {
@@ -696,6 +699,8 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 				strXml += '  <c:invertIfNegative val="0"/>'
 
 				// Fill and Border
+				// TODO: CURRENT: Pull#727
+				// WIP: let seriesColor = obj.color ? obj.color : opts.chartColors ? opts.chartColors[colorIndex % opts.chartColors.length] : null
 				let seriesColor = opts.chartColors ? opts.chartColors[colorIndex % opts.chartColors.length] : null
 
 				strXml += '  <c:spPr>'
@@ -711,13 +716,13 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 					if (opts.lineSize === 0) {
 						strXml += '<a:ln><a:noFill/></a:ln>'
 					} else {
-						strXml += '<a:ln w="' + opts.lineSize * ONEPT + '" cap="flat"><a:solidFill>' + createColorElement(seriesColor) + '</a:solidFill>'
+						strXml += '<a:ln w="' + valToPts(opts.lineSize) + '" cap="flat"><a:solidFill>' + createColorElement(seriesColor) + '</a:solidFill>'
 						strXml += '<a:prstDash val="' + (opts.lineDash || 'solid') + '"/><a:round/></a:ln>'
 					}
 				} else if (opts.dataBorder) {
 					strXml +=
 						'<a:ln w="' +
-						opts.dataBorder.pt * ONEPT +
+						valToPts(opts.dataBorder.pt) +
 						'" cap="flat"><a:solidFill>' +
 						createColorElement(opts.dataBorder.color) +
 						'</a:solidFill><a:prstDash val="solid"/><a:round/></a:ln>'
@@ -830,7 +835,7 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 						strXml += '  <c:numRef>'
 						strXml += '    <c:f>Sheet1!$A$2:$A$' + (obj.labels.length + 1) + '</c:f>'
 						strXml += '    <c:numCache>'
-						strXml += '      <c:formatCode>' + opts.catLabelFormatCode + '</c:formatCode>'
+						strXml += '      <c:formatCode>' + (opts.catLabelFormatCode || 'General') + '</c:formatCode>'
 						strXml += '      <c:ptCount val="' + obj.labels.length + '"/>'
 						obj.labels.forEach((label, idx) => {
 							strXml += '<c:pt idx="' + idx + '"><c:v>' + encodeXmlEntities(label) + '</c:v></c:pt>'
@@ -853,18 +858,18 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 
 				// 3: "Values"
 				{
-					strXml += '  <c:val>'
-					strXml += '    <c:numRef>'
-					strXml += '      <c:f>Sheet1!$' + getExcelColName(idx + 1) + '$2:$' + getExcelColName(idx + 1) + '$' + (obj.labels.length + 1) + '</c:f>'
-					strXml += '      <c:numCache>'
-					strXml += '        <c:formatCode>General</c:formatCode>'
-					strXml += '	       <c:ptCount val="' + obj.labels.length + '"/>'
+					strXml += '<c:val>'
+					strXml += '  <c:numRef>'
+					strXml += '    <c:f>Sheet1!$' + getExcelColName(idx + 1) + '$2:$' + getExcelColName(idx + 1) + '$' + (obj.labels.length + 1) + '</c:f>'
+					strXml += '    <c:numCache>'
+					strXml += '      <c:formatCode>' + (opts.valLabelFormatCode || opts.dataTableFormatCode || 'General') + '</c:formatCode>'
+					strXml += '      <c:ptCount val="' + obj.labels.length + '"/>'
 					obj.values.forEach((value, idx) => {
 						strXml += '<c:pt idx="' + idx + '"><c:v>' + (value || value === 0 ? value : '') + '</c:v></c:pt>'
 					})
-					strXml += '      </c:numCache>'
-					strXml += '    </c:numRef>'
-					strXml += '  </c:val>'
+					strXml += '    </c:numCache>'
+					strXml += '  </c:numRef>'
+					strXml += '</c:val>'
 				}
 
 				// Option: `smooth`
@@ -1019,7 +1024,7 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 					if (opts.lineSize === 0) {
 						strXml += '<a:ln><a:noFill/></a:ln>'
 					} else {
-						strXml += '<a:ln w="' + opts.lineSize * ONEPT + '" cap="flat"><a:solidFill>' + createColorElement(tmpSerColor) + '</a:solidFill>'
+						strXml += '<a:ln w="' + valToPts(opts.lineSize) + '" cap="flat"><a:solidFill>' + createColorElement(tmpSerColor) + '</a:solidFill>'
 						strXml += '<a:prstDash val="' + (opts.lineDash || 'solid') + '"/><a:round/></a:ln>'
 					}
 
@@ -1321,12 +1326,12 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 					} else if (opts.dataBorder) {
 						strXml +=
 							'<a:ln w="' +
-							opts.dataBorder.pt * ONEPT +
+							valToPts(opts.dataBorder.pt) +
 							'" cap="flat"><a:solidFill>' +
 							createColorElement(opts.dataBorder.color) +
 							'</a:solidFill><a:prstDash val="solid"/><a:round/></a:ln>'
 					} else {
-						strXml += '<a:ln w="' + opts.lineSize * ONEPT + '" cap="flat"><a:solidFill>' + createColorElement(tmpSerColor) + '</a:solidFill>'
+						strXml += '<a:ln w="' + valToPts(opts.lineSize) + '" cap="flat"><a:solidFill>' + createColorElement(tmpSerColor) + '</a:solidFill>'
 						strXml += '<a:prstDash val="' + (opts.lineDash || 'solid') + '"/><a:round/></a:ln>'
 					}
 
@@ -1482,7 +1487,7 @@ function makeChartType(chartType: CHART_NAME, data: OptsChartData[], opts: IChar
 					opts.chartColors[idx + 1 > opts.chartColors.length ? Math.floor(Math.random() * opts.chartColors.length) : idx]
 				)}</a:solidFill>`
 				if (opts.dataBorder) {
-					strXml += `<a:ln w="${opts.dataBorder.pt * ONEPT}" cap="flat"><a:solidFill>${createColorElement(
+					strXml += `<a:ln w="${valToPts(opts.dataBorder.pt)}" cap="flat"><a:solidFill>${createColorElement(
 						opts.dataBorder.color
 					)}</a:solidFill><a:prstDash val="solid"/><a:round/></a:ln>`
 				}
@@ -1691,7 +1696,7 @@ function makeCatAxis(opts: IChartOptsLib, axisId: string, valAxisId: string): st
  * @return {string} XML
  */
 function makeValAxis(opts: IChartOptsLib, valAxisId: string): string {
-	let axisPos = valAxisId === AXIS_ID_VALUE_PRIMARY ? (opts.barDir === 'col' ? 'l' : 'b') : opts.barDir === 'col' ? 'r' : 't'
+	let axisPos = valAxisId === AXIS_ID_VALUE_PRIMARY ? (opts.barDir === 'col' ? 'l' : 'b') : opts.barDir !== 'col' ? 'r' : 't'
 	let strXml = ''
 	let isRight = axisPos === 'r' || axisPos === 't'
 	let crosses = isRight ? 'max' : 'autoZero'
@@ -1756,7 +1761,9 @@ function makeValAxis(opts: IChartOptsLib, valAxisId: string): string {
 			: 'between') +
 		'"/>'
 	if (opts.valAxisMajorUnit) strXml += ' <c:majorUnit val="' + opts.valAxisMajorUnit + '"/>'
-	if (opts.valAxisDisplayUnit) strXml += `<c:dispUnits><c:builtInUnit val="${opts.valAxisDisplayUnit}"/><c:dispUnitsLbl/></c:dispUnits>`
+	if (opts.valAxisDisplayUnit)
+		strXml += `<c:dispUnits><c:builtInUnit val="${opts.valAxisDisplayUnit}"/>${opts.valAxisDisplayUnitLabel ? '<c:dispUnitsLbl/>' : ''}</c:dispUnits>`
+
 	strXml += '</c:valAx>'
 
 	return strXml
@@ -1906,7 +1913,7 @@ function getExcelColName(length: number): string {
  * @example { type: 'outer', blur: 3, offset: (23000 / 12700), angle: 90, color: '000000', opacity: 0.35, rotateWithShape: true };
  * @return {string} XML
  */
-function createShadowElement(options: IShadowOptions, defaults: object): string {
+function createShadowElement(options: ShadowProps, defaults: object): string {
 	if (!options) {
 		return '<a:effectLst/>'
 	} else if (typeof options !== 'object') {
@@ -1917,8 +1924,8 @@ function createShadowElement(options: IShadowOptions, defaults: object): string 
 	let strXml = '<a:effectLst>',
 		opts = getMix(defaults, options),
 		type = opts['type'] || 'outer',
-		blur = opts['blur'] * ONEPT,
-		offset = opts['offset'] * ONEPT,
+		blur = valToPts(opts['blur']),
+		offset = valToPts(opts['offset']),
 		angle = opts['angle'] * 60000,
 		color = opts['color'],
 		opacity = opts['opacity'] * 100000,
@@ -1943,7 +1950,7 @@ function createShadowElement(options: IShadowOptions, defaults: object): string 
 function createGridLineElement(glOpts: OptsChartGridLine): string {
 	let strXml: string = '<c:majorGridlines>'
 	strXml += ' <c:spPr>'
-	strXml += '  <a:ln w="' + Math.round((glOpts.size || DEF_CHART_GRIDLINE.size) * ONEPT) + '" cap="flat">'
+	strXml += '  <a:ln w="' + valToPts(glOpts.size || DEF_CHART_GRIDLINE.size) + '" cap="flat">'
 	strXml += '  <a:solidFill><a:srgbClr val="' + (glOpts.color || DEF_CHART_GRIDLINE.color) + '"/></a:solidFill>' // should accept scheme colors as implemented in [Pull #135]
 	strXml += '   <a:prstDash val="' + (glOpts.style || DEF_CHART_GRIDLINE.style) + '"/><a:round/>'
 	strXml += '  </a:ln>'

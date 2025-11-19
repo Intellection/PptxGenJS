@@ -4,16 +4,16 @@
 
 import { CRLF, DEF_FONT_SIZE, DEF_SLIDE_MARGIN_IN, EMU, LINEH_MODIFIER, ONEPT, SLIDE_OBJECT_TYPES } from './core-enums'
 import PptxGenJS from './pptxgen'
-import { ILayout, ISlideLayout, ITableCell, ITableToSlidesCell, ITableToSlidesOpts, ITableRow, TableRowSlide, ITableCellOpts } from './core-interfaces'
-import { inch2Emu, rgbToHex } from './gen-utils'
+import { PresLayout, SlideLayout, TableCell, TableToSlidesProps, TableRow, TableRowSlide, TableCellProps } from './core-interfaces'
+import { inch2Emu, rgbToHex, valToPts } from './gen-utils'
 
 /**
  * Break text paragraphs into lines based upon table column width (e.g.: Magic Happens Here(tm))
- * @param {ITableCell} cell - table cell
+ * @param {TableCell} cell - table cell
  * @param {number} colWidth - table column width
  * @return {string[]} XML
  */
-function parseTextToLines(cell: ITableCell, colWidth: number): string[] {
+function parseTextToLines(cell: TableCell, colWidth: number): string[] {
 	let CHAR = 2.2 + (cell.options && cell.options.autoPageCharWeight ? cell.options.autoPageCharWeight : 0) // Character Constant (An approximation of the Golden Ratio)
 	let CPL = (colWidth * EMU) / (((cell.options && cell.options.fontSize) || DEF_FONT_SIZE) / CHAR) // Chars-Per-Line
 	let arrLines = []
@@ -49,18 +49,13 @@ function parseTextToLines(cell: ITableCell, colWidth: number): string[] {
 
 /**
  * Takes an array of table rows and breaks into an array of slides, which contain the calculated amount of table rows that fit on that slide
- * @param {[ITableToSlidesCell[]?]} tableRows - HTMLElementID of the table
+ * @param {TableCell[][]} tableRows - HTMLElementID of the table
  * @param {ITableToSlidesOpts} tabOpts - array of options (e.g.: tabsize)
- * @param {ILayout} presLayout - Presentation layout
- * @param {ISlideLayout} masterSlide - master slide (if any)
+ * @param {PresLayout} presLayout - Presentation layout
+ * @param {SlideLayout} masterSlide - master slide (if any)
  * @return {TableRowSlide[]} array of table rows
  */
-export function getSlidesForTableRows(
-	tableRows: ITableToSlidesCell[][] = [],
-	tabOpts: ITableToSlidesOpts = {},
-	presLayout: ILayout,
-	masterSlide: ISlideLayout
-): TableRowSlide[] {
+export function getSlidesForTableRows(tableRows: TableCell[][] = [], tabOpts: TableToSlidesProps = {}, presLayout: PresLayout, masterSlide?: SlideLayout): TableRowSlide[] {
 	let arrInchMargins = DEF_SLIDE_MARGIN_IN,
 		emuTabCurrH = 0,
 		emuSlideTabW = EMU * 1,
@@ -68,7 +63,7 @@ export function getSlidesForTableRows(
 		numCols = 0,
 		tableRowSlides = [
 			{
-				rows: [] as ITableRow[],
+				rows: [] as TableRow[],
 			},
 		]
 
@@ -88,10 +83,10 @@ export function getSlidesForTableRows(
 		// Important: Use default size as zero cell margin is causing our tables to be too large and touch bottom of slide!
 		if (!tabOpts.slideMargin && tabOpts.slideMargin !== 0) tabOpts.slideMargin = DEF_SLIDE_MARGIN_IN[0]
 
-		if (masterSlide && typeof masterSlide.margin !== 'undefined') {
-			if (Array.isArray(masterSlide.margin)) arrInchMargins = masterSlide.margin
-			else if (!isNaN(Number(masterSlide.margin)))
-				arrInchMargins = [Number(masterSlide.margin), Number(masterSlide.margin), Number(masterSlide.margin), Number(masterSlide.margin)]
+		if (masterSlide && typeof masterSlide._margin !== 'undefined') {
+			if (Array.isArray(masterSlide._margin)) arrInchMargins = masterSlide._margin
+			else if (!isNaN(Number(masterSlide._margin)))
+				arrInchMargins = [Number(masterSlide._margin), Number(masterSlide._margin), Number(masterSlide._margin), Number(masterSlide._margin)]
 		} else if (tabOpts.slideMargin || tabOpts.slideMargin === 0) {
 			if (Array.isArray(tabOpts.slideMargin)) arrInchMargins = tabOpts.slideMargin
 			else if (!isNaN(tabOpts.slideMargin)) arrInchMargins = [tabOpts.slideMargin, tabOpts.slideMargin, tabOpts.slideMargin, tabOpts.slideMargin]
@@ -106,7 +101,7 @@ export function getSlidesForTableRows(
 		// ....: sufficient to determine column count. Therefore, check each cell for a colspan and total cols as reqd
 		let firstRow = tableRows[0] || []
 		firstRow.forEach(cell => {
-			if (!cell) cell = { type: SLIDE_OBJECT_TYPES.tablecell }
+			if (!cell) cell = { _type: SLIDE_OBJECT_TYPES.tablecell }
 			let cellOpts = cell.options || null
 			numCols += Number(cellOpts && cellOpts.colspan ? cellOpts.colspan : 1)
 		})
@@ -140,9 +135,7 @@ export function getSlidesForTableRows(
 		if (tabOpts.colW && !isNaN(Number(tabOpts.colW))) {
 			let arrColW = []
 			let firstRow = tableRows[0] || []
-			firstRow.forEach(() => {
-				arrColW.push(tabOpts.colW)
-			})
+			firstRow.forEach(() => arrColW.push(tabOpts.colW))
 			tabOpts.colW = []
 			arrColW.forEach(val => {
 				if (Array.isArray(tabOpts.colW)) tabOpts.colW.push(val)
@@ -165,7 +158,7 @@ export function getSlidesForTableRows(
 
 		// A: Row variables
 		let maxLineHeight = 0
-		let linesRow: ITableCell[] = []
+		let linesRow: TableCell[] = []
 		let maxCellMarTopEmu = 0
 		let maxCellMarBtmEmu = 0
 
@@ -179,10 +172,10 @@ export function getSlidesForTableRows(
 				options: cell.options,
 			})
 
-			if (cell.options.margin && cell.options.margin[0] && cell.options.margin[0] * ONEPT > maxCellMarTopEmu) maxCellMarTopEmu = cell.options.margin[0] * ONEPT
-			else if (tabOpts.margin && tabOpts.margin[0] && tabOpts.margin[0] * ONEPT > maxCellMarTopEmu) maxCellMarTopEmu = tabOpts.margin[0] * ONEPT
-			if (cell.options.margin && cell.options.margin[2] && cell.options.margin[2] * ONEPT > maxCellMarBtmEmu) maxCellMarBtmEmu = cell.options.margin[2] * ONEPT
-			else if (tabOpts.margin && tabOpts.margin[2] && tabOpts.margin[2] * ONEPT > maxCellMarBtmEmu) maxCellMarBtmEmu = tabOpts.margin[2] * ONEPT
+			if (cell.options.margin && cell.options.margin[0] && valToPts(cell.options.margin[0]) > maxCellMarTopEmu) maxCellMarTopEmu = valToPts(cell.options.margin[0])
+			else if (tabOpts.margin && tabOpts.margin[0] && valToPts(tabOpts.margin[0]) > maxCellMarTopEmu) maxCellMarTopEmu = valToPts(tabOpts.margin[0])
+			if (cell.options.margin && cell.options.margin[2] && valToPts(cell.options.margin[2]) > maxCellMarBtmEmu) maxCellMarBtmEmu = valToPts(cell.options.margin[2])
+			else if (tabOpts.margin && tabOpts.margin[2] && valToPts(tabOpts.margin[2]) > maxCellMarBtmEmu) maxCellMarBtmEmu = valToPts(tabOpts.margin[2])
 		})
 
 		// C: Calc usable vertical space/table height. Set default value first, adjust below when necessary.
@@ -193,7 +186,10 @@ export function getSlidesForTableRows(
 		if (tabOpts.verbose) console.log('emuSlideTabH (in) ...... = ' + (emuSlideTabH / EMU).toFixed(1))
 
 		// D: RULE: Use margins for starting point after the initial Slide, not `opt.y` (ISSUE#43, ISSUE#47, ISSUE#48)
-		if (tableRowSlides.length > 1 && typeof tabOpts.newSlideStartY === 'number') {
+		if (tableRowSlides.length > 1 && typeof tabOpts.autoPageSlideStartY === 'number') {
+			emuSlideTabH = tabOpts.h && typeof tabOpts.h === 'number' ? tabOpts.h : presLayout.height - inch2Emu(tabOpts.autoPageSlideStartY + arrInchMargins[2])
+		} else if (tableRowSlides.length > 1 && typeof tabOpts.newSlideStartY === 'number') {
+			// @deprecated v3.3.0
 			emuSlideTabH = tabOpts.h && typeof tabOpts.h === 'number' ? tabOpts.h : presLayout.height - inch2Emu(tabOpts.newSlideStartY + arrInchMargins[2])
 		} else if (tableRowSlides.length > 1 && typeof tabOpts.y === 'number') {
 			emuSlideTabH = presLayout.height - inch2Emu((tabOpts.y / EMU < arrInchMargins[0] ? tabOpts.y / EMU : arrInchMargins[0]) + arrInchMargins[2])
@@ -205,27 +201,31 @@ export function getSlidesForTableRows(
 
 		// E: **BUILD DATA SET** | Iterate over cells: split text into lines[], set `lineHeight`
 		row.forEach((cell, iCell) => {
-			let newCell: ITableCell = {
-				type: SLIDE_OBJECT_TYPES.tablecell,
-				text: '',
-				options: cell.options,
-				lines: [],
-				lineHeight: inch2Emu(
+			let newCell: TableCell = {
+				_type: SLIDE_OBJECT_TYPES.tablecell,
+				_lines: [],
+				_lineHeight: inch2Emu(
 					((cell.options && cell.options.fontSize ? cell.options.fontSize : tabOpts.fontSize ? tabOpts.fontSize : DEF_FONT_SIZE) *
 						(LINEH_MODIFIER + (tabOpts.autoPageLineWeight ? tabOpts.autoPageLineWeight : 0))) /
 						100
 				),
+				text: '',
+				options: cell.options,
 			}
 			//if (tabOpts.verbose) console.log(`- CELL [${iCell}]: newCell.lineHeight ..... = ${(newCell.lineHeight / EMU).toFixed(2)}`)
 
 			// 1: Exempt cells with `rowspan` from increasing lineHeight (or we could create a new slide when unecessary!)
-			if (newCell.options.rowspan) newCell.lineHeight = 0
+			if (newCell.options.rowspan) newCell._lineHeight = 0
 
 			// 2: The parseTextToLines method uses `autoPageCharWeight`, so inherit from table options
 			newCell.options.autoPageCharWeight = tabOpts.autoPageCharWeight ? tabOpts.autoPageCharWeight : null
 
 			// 3: **MAIN** Parse cell contents into lines based upon col width, font, etc
-			newCell.lines = parseTextToLines(cell, tabOpts.colW[iCell] / ONEPT)
+			let totalColW = tabOpts.colW[iCell]
+			if (cell.options.colspan && Array.isArray(tabOpts.colW)) {
+				totalColW = tabOpts.colW.filter((_cell, idx) => idx >= iCell && idx < idx + cell.options.colspan).reduce((prev, curr) => prev + curr)
+			}
+			newCell._lines = parseTextToLines(cell, totalColW / ONEPT)
 
 			// 4: Add to array
 			linesRow.push(newCell)
@@ -245,7 +245,7 @@ export function getSlidesForTableRows(
 		 * That way, when the vertical size limit is hit, all lines pick up where they need to on the subsequent slide.
 		 */
 		if (tabOpts.verbose) console.log(`- SLIDE [${tableRowSlides.length}]: ROW [${iRow}]: START...`)
-		while (linesRow.filter(cell => cell.lines.length > 0).length > 0) {
+		while (linesRow.filter(cell => cell._lines.length > 0).length > 0) {
 			// A: Add new Slide if there is no more space to fix 1 new line
 			if (emuTabCurrH + maxLineHeight > emuSlideTabH) {
 				if (tabOpts.verbose)
@@ -256,31 +256,33 @@ export function getSlidesForTableRows(
 
 				// 1: Add a new slide
 				tableRowSlides.push({
-					rows: [] as ITableRow[],
+					rows: [] as TableRow[],
 				})
 
 				// 2: Reset current table height for new Slide
 				emuTabCurrH = 0 // This row's emuRowH w/b added below
 
-				// 3: Handle "addHeaderToEach" option /or/ Add new empty row to continue current lines into
-				if (tabOpts.addHeaderToEach && tabOpts._arrObjTabHeadRows) {
+				// 3: Handle repeat headers option /or/ Add new empty row to continue current lines into
+				if ((tabOpts.addHeaderToEach || tabOpts.autoPageRepeatHeader) && tabOpts._arrObjTabHeadRows) {
 					// A: Add remaining cell lines
 					let newRowSlide = []
 					linesRow.forEach(cell => {
 						newRowSlide.push({
 							type: SLIDE_OBJECT_TYPES.tablecell,
-							text: cell.lines.join(''),
+							text: cell._lines.join(''),
 							options: cell.options,
 						})
 					})
 					tableRows.unshift(newRowSlide)
 
 					// B: Add header row(s)
-					newRowSlide = []
-					tabOpts._arrObjTabHeadRows[0].forEach(cell => {
-						newRowSlide.push(cell)
+					let tableHeadRows: TableCell[][] = []
+					tabOpts._arrObjTabHeadRows.forEach(row => {
+						let newHeadRow = []
+						row.forEach(cell => newHeadRow.push(cell))
+						tableHeadRows.push(newHeadRow)
 					})
-					tableRows.unshift(newRowSlide)
+					tableRows = [...tableHeadRows, ...tableRows]
 
 					// C:
 					break
@@ -301,17 +303,16 @@ export function getSlidesForTableRows(
 
 			// B: Add a line of text to 1-N cells that still have `lines`
 			linesRow.forEach((cell, idxR) => {
-				if (cell.lines.length > 0) {
+				if (cell._lines.length > 0) {
 					// 1
 					let currSlide = tableRowSlides[tableRowSlides.length - 1]
-					currSlide.rows[currSlide.rows.length - 1][idxR].text +=
-						(currSlide.rows[currSlide.rows.length - 1][idxR].text.length > 0 && !RegExp(/\n$/g).test(currSlide.rows[currSlide.rows.length - 1][idxR].text)
-							? CRLF
-							: ''
-						).replace(/[\r\n]+$/g, CRLF) + cell.lines.shift()
+					// NOTE: TableCell.text type c/b string|IText (for conversion in method that calls this one), but we can guarantee it always string b/c we craft it, hence this TS workaround
+					let rowCell = currSlide.rows[currSlide.rows.length - 1][idxR] as TableCell
+					let currText = rowCell.text.toString()
+					rowCell.text += (currText.length > 0 && !RegExp(/\n$/g).test(currText) ? CRLF : '').replace(/[\r\n]+$/g, CRLF) + cell._lines.shift()
 
 					// 2
-					if (cell.lineHeight > maxLineHeight) maxLineHeight = cell.lineHeight
+					if (cell._lineHeight > maxLineHeight) maxLineHeight = cell._lineHeight
 				}
 			})
 
@@ -340,16 +341,18 @@ export function getSlidesForTableRows(
 
 /**
  * Reproduces an HTML table as a PowerPoint table - including column widths, style, etc. - creates 1 or more slides as needed
+ * @param {PptxGenJS} pptx - pptxgenjs instance
  * @param {string} tabEleId - HTMLElementID of the table
- * @param {ITableToSlidesOpts} inOpts - array of options (e.g.: tabsize)
+ * @param {ITableToSlidesOpts} options - array of options (e.g.: tabsize)
+ * @param {SlideLayout} masterSlide - masterSlide
  */
-export function genTableToSlides(pptx: PptxGenJS, tabEleId: string, options: ITableToSlidesOpts = {}, masterSlide: ISlideLayout) {
+export function genTableToSlides(pptx: PptxGenJS, tabEleId: string, options: TableToSlidesProps = {}, masterSlide?: SlideLayout) {
 	let opts = options || {}
 	opts.slideMargin = opts.slideMargin || opts.slideMargin === 0 ? opts.slideMargin : 0.5
 	let emuSlideTabW = opts.w || pptx.presLayout.width
-	let arrObjTabHeadRows: [ITableToSlidesCell[]?] = []
-	let arrObjTabBodyRows: [ITableToSlidesCell[]?] = []
-	let arrObjTabFootRows: [ITableToSlidesCell[]?] = []
+	let arrObjTabHeadRows: [TableCell[]?] = []
+	let arrObjTabBodyRows: [TableCell[]?] = []
+	let arrObjTabFootRows: [TableCell[]?] = []
 	let arrColW: number[] = []
 	let arrTabColW: number[] = []
 	let arrInchMargins: [number, number, number, number] = [0.5, 0.5, 0.5, 0.5] // TRBL-style
@@ -359,9 +362,9 @@ export function genTableToSlides(pptx: PptxGenJS, tabEleId: string, options: ITa
 	if (!document.getElementById(tabEleId)) throw new Error('tableToSlides: Table ID "' + tabEleId + '" does not exist!')
 
 	// STEP 1: Set margins
-	if (masterSlide && masterSlide.margin) {
-		if (Array.isArray(masterSlide.margin)) arrInchMargins = masterSlide.margin
-		else if (!isNaN(masterSlide.margin)) arrInchMargins = [masterSlide.margin, masterSlide.margin, masterSlide.margin, masterSlide.margin]
+	if (masterSlide && masterSlide._margin) {
+		if (Array.isArray(masterSlide._margin)) arrInchMargins = masterSlide._margin
+		else if (!isNaN(masterSlide._margin)) arrInchMargins = [masterSlide._margin, masterSlide._margin, masterSlide._margin, masterSlide._margin]
 		opts.slideMargin = arrInchMargins
 	} else if (opts && opts.slideMargin) {
 		if (Array.isArray(opts.slideMargin)) arrInchMargins = opts.slideMargin
@@ -412,7 +415,7 @@ export function genTableToSlides(pptx: PptxGenJS, tabEleId: string, options: ITa
 	// NOTE: We create 3 arrays instead of one so we can loop over body then show header/footer rows on first and last page
 	;['thead', 'tbody', 'tfoot'].forEach(part => {
 		document.querySelectorAll(`#${tabEleId} ${part} tr`).forEach((row: HTMLTableRowElement) => {
-			let arrObjTabCells: ITableCell[] = []
+			let arrObjTabCells: TableCell[] = []
 			Array.from(row.cells).forEach(cell => {
 				// A: Get RGB text/bkgd colors
 				let arrRGB1 = window.getComputedStyle(cell).getPropertyValue('color').replace(/\s+/gi, '').replace('rgba(', '').replace('rgb(', '').replace(')', '').split(',')
@@ -433,7 +436,7 @@ export function genTableToSlides(pptx: PptxGenJS, tabEleId: string, options: ITa
 				}
 
 				// B: Create option object
-				let cellOpts: ITableCellOpts = {
+				let cellOpts: TableCellProps = {
 					align: null,
 					bold:
 						window.getComputedStyle(cell).getPropertyValue('font-weight') === 'bold' ||
@@ -442,7 +445,7 @@ export function genTableToSlides(pptx: PptxGenJS, tabEleId: string, options: ITa
 							: false,
 					border: null,
 					color: rgbToHex(Number(arrRGB1[0]), Number(arrRGB1[1]), Number(arrRGB1[2])),
-					fill: rgbToHex(Number(arrRGB2[0]), Number(arrRGB2[1]), Number(arrRGB2[2])),
+					fill: { color: rgbToHex(Number(arrRGB2[0]), Number(arrRGB2[1]), Number(arrRGB2[2])) },
 					fontFace:
 						(window.getComputedStyle(cell).getPropertyValue('font-family') || '').split(',')[0].replace(/"/g, '').replace('inherit', '').replace('initial', '') ||
 						null,
@@ -506,7 +509,7 @@ export function genTableToSlides(pptx: PptxGenJS, tabEleId: string, options: ITa
 
 				// LAST: Add cell
 				arrObjTabCells.push({
-					type: SLIDE_OBJECT_TYPES.tablecell,
+					_type: SLIDE_OBJECT_TYPES.tablecell,
 					text: cell.innerText, // `innerText` returns <br> as "\n", so linebreak etc. work later!
 					options: cellOpts,
 				})
@@ -536,10 +539,10 @@ export function genTableToSlides(pptx: PptxGenJS, tabEleId: string, options: ITa
 		// A: Create new Slide
 		let newSlide = pptx.addSlide({ masterName: opts.masterSlideName || null })
 
-		// B: DESIGN: Reset `y` to `newSlideStartY` or margin after first Slide (ISSUE#43, ISSUE#47, ISSUE#48)
+		// B: DESIGN: Reset `y` to startY or margin after first Slide (ISSUE#43, ISSUE#47, ISSUE#48)
 		if (idxTr === 0) opts.y = opts.y || arrInchMargins[0]
-		if (idxTr > 0) opts.y = opts.newSlideStartY || arrInchMargins[0]
-		if (opts.verbose) console.log('opts.newSlideStartY:' + opts.newSlideStartY + ' / arrInchMargins[0]:' + arrInchMargins[0] + ' => opts.y = ' + opts.y)
+		if (idxTr > 0) opts.y = opts.autoPageSlideStartY || opts.newSlideStartY || arrInchMargins[0]
+		if (opts.verbose) console.log('opts.autoPageSlideStartY:' + opts.autoPageSlideStartY + ' / arrInchMargins[0]:' + arrInchMargins[0] + ' => opts.y = ' + opts.y)
 
 		// C: Add table to Slide
 		newSlide.addTable(slide.rows, { x: opts.x || arrInchMargins[3], y: opts.y, w: Number(emuSlideTabW) / EMU, colW: arrColW, autoPage: false })
